@@ -117,9 +117,10 @@ class Fattree_general( Topo ):
 
       # Wiring hosts and bottom switches
       for h in range(hostfanout):
-        self.addLink( host_machines[h + idx*hostfanout], b )
-
-
+        if (h + idx*hostfanout+1)%2 != 0:
+          self.addLink( host_machines[h + idx*hostfanout], b )
+        else:
+          self.addLink( host_machines[h + idx*hostfanout], b, delay='100ms')
 
 
 ##### Topologies #####
@@ -127,4 +128,5 @@ topos = { 'fattree_2_3_1': ( lambda: Fattree_general(2,3,1) ),          \
           'clique_4sw' : ( lambda: Clique_4sw() ),           \
           'clique_3sw' : ( lambda: Clique_3sw() ),           \
           'server_lb' : ( lambda: Server_LB() ),             \
+          'fattree_1_2_2' : ( lambda: Fattree_general(1,2,2) ),             \
           'fattree_2_5_1' : ( lambda: Fattree_general(2,5,1) ) }
