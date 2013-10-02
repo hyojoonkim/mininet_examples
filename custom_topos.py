@@ -12,6 +12,13 @@ from mininet.cli import CLI
 from mininet.util import irange,dumpNodeConnections
 from mininet.log import setLogLevel
 
+
+#######################################################
+# $ sudo mn --controller=remote,ip=127.0.0.1 --custom ./custom_topos.py 
+#           --topo fattree_2_3_1 --arp --mac --link=tc
+#######################################################
+
+
 class Clique_3sw( Topo ):
   def __init__(self):
     # Initialize topology
@@ -77,7 +84,7 @@ class Server_LB( Topo ):
     h3 = self.addHost( 'h3' )
     h4 = self.addHost( 'h4' )
 
-    s1 = self.addSwitch( 's1' )
+    s1 = self.addSwitch( 's1',dpid='0000000000001111' )
     s2 = self.addSwitch( 's2' )
     s3 = self.addSwitch( 's3' )
 
@@ -122,9 +129,50 @@ class Fattree_general( Topo ):
         else:
           self.addLink( host_machines[h + idx*hostfanout], b, delay='100ms')
 
+class Fattree_threelevel( Topo ):          
+  def __init__(self, top, middle, bottom, hostfanout):
+    Topo.__init__(self)
+
+    top_switches = []  
+    middle_switches = []  
+    bottom_switches = []  
+    host_machines = []
+
+    # Create top switches
+    for s in range(top):
+      top_switches.append(self.addSwitch( 's%s'%(s+1) ))
+
+    # Create middle switches and hosts
+    for s in range(middle):
+      middle_switches.append(self.addSwitch( 's%s'%(s+1+top) ))
+
+    # Create bottom switches and hosts
+    for s in range(bottom):
+      bottom_switches.append(self.addSwitch( 's%s'%(s+1+top+middle) ))
+
+      # Host creation
+      for h in range(hostfanout):
+        host_machines.append(self.addHost( 'h%s'%(h+1+s*hostfanout) ))
+
+    # Wiring of top and middle
+    for idx,m in enumerate(middle_switches):
+      for t in top_switches:
+        self.addLink ( m, t )
+
+    # Wiring of middle and bottom, bottom and hosts
+    for idx,b in enumerate(bottom_switches):
+      for t in middle_switches:
+        self.addLink ( b, t )
+
+      # Wiring hosts and bottom switches
+      for h in range(hostfanout):
+        self.addLink( host_machines[h + idx*hostfanout], b )
+
+
 
 ##### Topologies #####
 topos = { 'fattree_2_3_1': ( lambda: Fattree_general(2,3,1) ),          \
+          'fattree_three' : ( lambda: Fattree_threelevel(1,2,3,1) ),           \
           'clique_4sw' : ( lambda: Clique_4sw() ),           \
           'clique_3sw' : ( lambda: Clique_3sw() ),           \
           'server_lb' : ( lambda: Server_LB() ),             \

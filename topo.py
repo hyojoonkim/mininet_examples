@@ -18,16 +18,23 @@ from optparse import OptionParser
 
 
 class EventTopo(Topo):
-  "20 switch and 1 host topology with varying delays"
-  def __init__(self, N, **opts):
+  def __init__(self, topo_type, top, middle=None, bottom=None, host_fanout=None, **opts):
     # Initialize topology and default options
     Topo.__init__(self, **opts)
 
+    if topo_type == 'linear':
+      self.linear_topo(top)
+
+    elif topo_type == 'fattree':
+      self.fattree_topo(top, middle, bottom, host_fanout)
+
+
+  def linear_topo(self,num_hosts):
     # Create switches and hosts
     hosts = [ self.addHost( 'h%s' % h )
-              for h in irange( 1, N ) ]
+              for h in irange( 1, num_hosts ) ]
     switches = [ self.addSwitch( 's%s' % s )
-              for s in irange( 1, N ) ]
+              for s in irange( 1, num_hosts ) ]
   
     # Wire up switches
     last = None                
@@ -40,7 +47,49 @@ class EventTopo(Topo):
     for host, switch in zip( hosts, switches ):
       self.addLink( host, switch )
 
-topos = { 'mytopo': ( lambda: EventTopo(5) ) }
+
+  def fattree_topo(self,top, middle, bottom, hostfanout):
+    top_switches = []  
+    middle_switches = []  
+    bottom_switches = []  
+    host_machines = []
+
+    # Create top switches
+    for s in range(top):
+      top_switches.append(self.addSwitch( 's%s'%(s+1) ))
+
+    # Create middle switches and hosts
+    for s in range(middle):
+      middle_switches.append(self.addSwitch( 's%s'%(s+1+top) ))
+
+    # Create bottom switches and hosts
+    for s in range(bottom):
+      bottom_switches.append(self.addSwitch( 's%s'%(s+1+top+middle) ))
+
+      # Host creation
+      for h in range(hostfanout):
+        host_machines.append(self.addHost( 'h%s'%(h+1+s*hostfanout) ))
+
+
+    # Wiring of top and middle
+    for idx,m in enumerate(middle_switches):
+      for t in top_switches:
+        self.addLink ( m, t )
+
+    # Wiring of middle and bottom, bottom and hosts
+    for idx,b in enumerate(bottom_switches):
+      for t in middle_switches:
+        self.addLink ( b, t )
+
+      # Wiring hosts and bottom switches
+      for h in range(hostfanout):
+        self.addLink( host_machines[h + idx*hostfanout], b )
+#        if (h + idx*hostfanout+1)%2 != 0:
+#          self.addLink( host_machines[h + idx*hostfanout], b )
+#        else:
+#          self.addLink( host_machines[h + idx*hostfanout], b, delay='100ms')
+
+
 
 def startpings( host, targetip, timeout, wait_time):
   "Tell host to repeatedly ping targets"
@@ -60,10 +109,11 @@ def startpings( host, targetip, timeout, wait_time):
   host.cmd( cmd )
 
 
-def RTTTest(n, timeout, wait_time):
-    
+
+
+def MakeTestBed_and_Test(topo_type, top, middle, bottom, host_fanout, timeout, wait_time):
   print "a. Firing up Mininet"
-  net = Mininet(topo=EventTopo(n), controller=lambda name: RemoteController( 'c0', '127.0.0.1' ), host=CPULimitedHost, link=TCLink)                                  
+  net = Mininet(topo=EventTopo(topo_type, top, middle, bottom, host_fanout), controller=lambda name: RemoteController( 'c0', '127.0.0.1' ), host=CPULimitedHost, link=TCLink)                                  
   net.start() 
 
   h1 = net.get('h1')
@@ -88,6 +138,7 @@ def RTTTest(n, timeout, wait_time):
   print "c. Stopping Mininet"
   net.stop()
 
+
 def main():
   desc = ( 'Generate Mininet Testbed' )
   usage = ( '%prog [options]\n'
@@ -103,6 +154,9 @@ def main():
 
   op.add_option( '--time', '-t', action="store", \
                  dest="timeout", help = "Specify the timeout in seconds." )
+ 
+  op.add_option( '--type', '-y', action="store", \
+                 dest="topo_type", help = "Specify type of the topology (linear, fattree)" )
 
 
   wait_time = 0.0
@@ -122,11 +176,23 @@ def main():
     print '\nNo rate given. Abort.\n'
     return
 
+  # Set parameters      
   timeout_int = math.ceil(float(options.timeout))
+  
+  top = 1
+  middle = 2
+  bottom = int(options.switchnum)
+  host_fanout = 5
+
+  # Start
   if options.switchnum is not None and options.timeout is not None and options.rate is not None:
     setLogLevel('info')
-    RTTTest(int(options.switchnum), timeout_int, wait_time)
-
+    MakeTestBed_and_Test(options.topo_type,
+                         top,
+                         middle,
+                         bottom, 
+                         host_fanout,
+                         timeout_int, wait_time)
   else:
     print '\nNo switch number given. Abort.\n'
 
