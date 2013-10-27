@@ -11,11 +11,12 @@ from mininet.link import TCLink
 from mininet.cli import CLI
 from mininet.util import irange,dumpNodeConnections
 from mininet.log import setLogLevel
+import math
 
 
 #######################################################
 # $ sudo mn --controller=remote,ip=127.0.0.1 --custom ./custom_topos.py 
-#           --topo fattree_2_3_1 --arp --mac --link=tc
+#           --topo fattree_three --arp --mac --link=tc
 #######################################################
 
 
@@ -170,9 +171,54 @@ class Fattree_threelevel( Topo ):
 
 
 
+class Alfares_FatTree( Topo ):
+  def __init__(self, k):
+    Topo.__init__(self)
+
+    core_switches = []  
+    aggr_switches = []  
+    edge_switches = []  
+    host_machines = []
+
+    # Create core switches
+    for s in range(k):
+      core_switches.append(self.addSwitch( 's%s'%(s+1) ))
+
+    number_of_aggr_switches = int(math.pow(k,2)/2)
+    number_of_edge_switches = number_of_aggr_switches
+    # Create aggregation switches
+    for s in range(number_of_aggr_switches):
+      aggr_switches.append(self.addSwitch( 's%s'%(s+k+1) ))
+
+    # Create edge switches and hosts
+    for s in range(number_of_edge_switches):
+      edge_switches.append(self.addSwitch( 's%s'%(s+number_of_aggr_switches+k+1) ))
+
+      # Host creation
+      for h in range(k/2):
+        host_machines.append(self.addHost( 'h%s'%(h+1+s*(k/2)) ))
+
+    # Wiring of core and aggregation
+    for idx1,core in enumerate(core_switches):
+      for idx2,aggr in enumerate(aggr_switches):
+        if idx2%k == idx1/2:
+          self.addLink( aggr, core )
+
+    # Wiring of aggregation and edge
+    for aggr in aggr_switches:
+      for edge in edge_switches:
+        self.addLink ( edge, aggr )
+
+    # Wiring hosts and edge switches
+    for idx,edge in enumerate(edge_switches):
+      for h in range(k/2):
+        self.addLink( host_machines[h + idx*(k/2)], edge )
+
 ##### Topologies #####
 topos = { 'fattree_2_3_1': ( lambda: Fattree_general(2,3,1) ),          \
-          'fattree_three' : ( lambda: Fattree_threelevel(1,2,3,1) ),           \
+#          'fattree_three' : ( lambda: Fattree_threelevel(1,5,72,24) ),           \
+          'fattree_three' : ( lambda: Fattree_threelevel(1,2,3,2) ),           \
+          'm_fattree' : ( lambda: Alfares_FatTree(4) ),           \
           'clique_4sw' : ( lambda: Clique_4sw() ),           \
           'clique_3sw' : ( lambda: Clique_3sw() ),           \
           'server_lb' : ( lambda: Server_LB() ),             \
