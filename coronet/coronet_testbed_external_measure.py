@@ -14,79 +14,9 @@ from mininet.util import irange,dumpNodeConnections
 from mininet.log import setLogLevel
 import time
 import math
+import sys
 from optparse import OptionParser
-
 from lib.custom_topos import Alfares_FatTree
-
-class EventTopo(Topo):
-  def __init__(self, kval, **opts):
-    # Initialize topology and default options
-    Topo.__init__(self, **opts)
-
-
-    self.fattree_topo(top, middle, bottom, host_fanout)
-
-
-  def linear_topo(self,num_hosts):
-    # Create switches and hosts
-    hosts = [ self.addHost( 'h%s' % h )
-              for h in irange( 1, num_hosts ) ]
-    switches = [ self.addSwitch( 's%s' % s )
-              for s in irange( 1, num_hosts ) ]
-  
-    # Wire up switches
-    last = None                
-    for switch in switches:
-      if last:
-        self.addLink( last, switch )
-      last = switch
-  
-    # Wire up hosts
-    for host, switch in zip( hosts, switches ):
-      self.addLink( host, switch )
-
-
-  def fattree_topo(self,top, middle, bottom, hostfanout):
-    top_switches = []  
-    middle_switches = []  
-    bottom_switches = []  
-    host_machines = []
-
-    # Create top switches
-    for s in range(top):
-      top_switches.append(self.addSwitch( 's%s'%(s+1) ))
-
-    # Create middle switches and hosts
-    for s in range(middle):
-      middle_switches.append(self.addSwitch( 's%s'%(s+1+top) ))
-
-    # Create bottom switches and hosts
-    for s in range(bottom):
-      bottom_switches.append(self.addSwitch( 's%s'%(s+1+top+middle) ))
-
-      # Host creation
-      for h in range(hostfanout):
-        host_machines.append(self.addHost( 'h%s'%(h+1+s*hostfanout) ))
-
-
-    # Wiring of top and middle
-    for idx,m in enumerate(middle_switches):
-      for t in top_switches:
-        self.addLink ( m, t )
-
-    # Wiring of middle and bottom, bottom and hosts
-    for idx,b in enumerate(bottom_switches):
-      for t in middle_switches:
-        self.addLink ( b, t )
-
-      # Wiring hosts and bottom switches
-      for h in range(hostfanout):
-        self.addLink( host_machines[h + idx*hostfanout], b )
-#        if (h + idx*hostfanout+1)%2 != 0:
-#          self.addLink( host_machines[h + idx*hostfanout], b )
-#        else:
-#          self.addLink( host_machines[h + idx*hostfanout], b, delay='100ms')
-
 
 
 def startpings( host, targetip, timeout, ping_interval):
@@ -108,40 +38,40 @@ def startpings( host, targetip, timeout, ping_interval):
 
 
 
-def MakeTestBed_and_Test(kval, timeout, ping_interval):
+def MakeTestBed_and_Test(kval, timeout, ping_interval, controller_ip):
   print "a. Firing up Mininet"
-  net = Mininet(topo=Alfares_FatTree(kval), controller=lambda name: RemoteController( 'c0', '127.0.0.1' ), host=CPULimitedHost, link=TCLink)                                  
+  net = Mininet(topo=Alfares_FatTree(kval), controller=lambda name: RemoteController( 'c0', controller_ip ), host=CPULimitedHost, link=TCLink)
   net.start() 
 
   time.sleep(5)
   hosts = net.hosts
 
   # One ping from each host. Make the controller ready.
+  print "b. Get all the paths ready"
   for h1 in hosts:
     for h2 in hosts:
       if h1!=h2:
         h1.cmdPrint('ping', '-c3', str(h2.IP()))
-#       pinghost = [h1,h2]
-#       ping(pinghost)
 
 
-  # Start pings
-#  print "b. Starting continuous allpair ping"
-#  for h1 in hosts:
-#    for h2 in hosts:
-#      if h1!=h2:
+  # Start continuous ping
+  print "c. Starting continuous allpair ping"
+  for h1 in hosts:
+    for h2 in hosts:
+      if h1!=h2:
+        h1.cmdPrint('ping', str(h2.IP()), '&')
 #        startpings(h1,h2, timeout, ping_interval)
-#   
+   
   # Wait
   time.sleep(timeout)
 
-#  # Stop pings
-#  print "c. Stopping pings"
-#  for host in hosts:
-#    host.cmd( 'kill %while' )
-#
+  # Stop pings
+  print "d. Stopping pings"
+  for host in hosts:
+    host.cmd( 'pkill ping' )
+
   # Stop mininit
-  print "d. Stopping Mininet"
+  print "e. Stopping Mininet"
   net.stop()
 
 
@@ -161,9 +91,18 @@ def main():
   op.add_option( '--kvalue', '-k', action="store", \
                  dest="kvalue", help = "K value for the folded clos topology." )
 
+  op.add_option( '--controller', '-c', action="store", \
+                 dest="controller", help = "Controller IP address (with numbers!)" )
+
 
   ping_interval = 0.0
   options, args = op.parse_args()
+
+  args = sys.argv[1:]
+  if len(args) != 8:
+    print '\nWrong number of arguments given: %s. Abort\n' %(str(len(args)))
+    op.print_help()
+    sys.exit(1)
 
   if options.rate is not None:
     if options.rate.endswith('S'):
@@ -181,12 +120,12 @@ def main():
 
   # Set parameters      
   timeout_int = math.ceil(float(options.timeout))
+  controller_ip = options.controller
   
-
   # Start
   if options.timeout is not None and options.rate is not None:
     setLogLevel('info')
-    MakeTestBed_and_Test(int(options.kvalue), timeout_int, ping_interval)
+    MakeTestBed_and_Test(int(options.kvalue), timeout_int, ping_interval, controller_ip)
 
   else:
     print '\nNo switch number given. Abort.\n'
