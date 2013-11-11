@@ -180,20 +180,22 @@ class Alfares_FatTree( Topo ):
     edge_switches = []  
     host_machines = []
 
-    # Create core switches
-    for s in range( int(math.pow( (k/2), 2 ) ) ):
-      core_switches.append(self.addSwitch( 's%s'%(s+1) ))
-
+    number_of_core_switches = int(math.pow( (k/2), 2 ) )
     number_of_aggr_switches = int(math.pow(k,2)/2)
     number_of_edge_switches = number_of_aggr_switches
 
+    # Create core switches
+    for s in range( number_of_core_switches ):
+      core_switches.append(self.addSwitch( 's%s'%(s+1) ))
+
+
     # Create aggregation switches
     for s in range(number_of_aggr_switches):
-      aggr_switches.append(self.addSwitch( 's%s'%(s+k+1) ))
+      aggr_switches.append(self.addSwitch( 's%s'%(s+number_of_core_switches+1) ))
 
     # Create edge switches and hosts
     for s in range(number_of_edge_switches):
-      edge_switches.append(self.addSwitch( 's%s'%(s+number_of_aggr_switches+k+1) ))
+      edge_switches.append(self.addSwitch( 's%s'%(s+number_of_aggr_switches+number_of_core_switches+1) ))
 
       # Host creation
       for h in range(k/2):

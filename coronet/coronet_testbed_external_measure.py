@@ -51,15 +51,32 @@ def MakeTestBed_and_Test(kval, timeout, ping_interval, controller_ip):
   for h1 in hosts:
     for h2 in hosts:
       if h1!=h2:
-        h1.cmdPrint('ping', '-c3', str(h2.IP()))
+        h1.cmdPrint('ping', '-c 1', '-W 1', str(h2.IP()))
+        time.sleep(1)
+        break
+
+#  h1 = hosts[0]
+#  for h2 in hosts[1:]:
+#    h1.cmdPrint('ping', '-c3', str(h2.IP()))
+#    time.sleep(15)
+
+  print 'READY! Waiting 11 seconds before actual measurement starts.'
+  time.sleep(11)
 
 
-  # Start continuous ping
-  print "c. Starting continuous allpair ping"
+  print 'Testing!!! '
   for h1 in hosts:
     for h2 in hosts:
       if h1!=h2:
-        h1.cmdPrint('ping', str(h2.IP()), '&')
+        h1.cmdPrint('ping', '-c 3', str(h2.IP()))
+
+
+#  # Start continuous ping
+#  print "c. Starting continuous allpair ping"
+#  for h1 in hosts:
+#    for h2 in hosts:
+#      if h1!=h2:
+#        h1.cmdPrint('ping', str(h2.IP()), '&')
 #        startpings(h1,h2, timeout, ping_interval)
    
   # Wait
