@@ -1,0 +1,2 @@
+#link s1 s2 down
+#py s1.stop()

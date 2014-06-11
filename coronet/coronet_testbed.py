@@ -90,25 +90,6 @@ class EventTopo(Topo):
 #          self.addLink( host_machines[h + idx*hostfanout], b, delay='100ms')
 
 
-
-def startpings( host, targetip, timeout, ping_interval):
-  "Tell host to repeatedly ping targets"
-
-  # Simple ping loop
-  cmd = ( 'while true; do '
-          ' echo -n %s "->" %s ' % (host.IP(), targetip.IP()) + 
-          ' `ping %s -i %s -w %s -W 0.9 >> ./output/%s_%s`;' % (targetip.IP(), str(ping_interval), str(timeout), host.IP(),targetip.IP()) + 
-          ' break;'
-          'done &' )
-
-#  cmd = (' echo har > hla%s' %(targetip.IP()) + ' &') 
-
-  print ( '*** Host %s (%s) will be pinging ips: %s' %
-          ( host.name, host.IP(), targetip.IP() ) )
-
-  host.cmd( cmd )
-
-
 def switch_stat_printout(s1):
 
   # switch stat print loop
@@ -129,49 +110,129 @@ def switch_stat_printout(s1):
   s1.cmd( cmd )
 
 
+def ping_traffic(hosts, timeout,ping_interval):
+    for h1 in hosts:
+        for h2 in hosts:
+            if h1!=h2:
+                h1.cmd('ping','-i', str(ping_interval), '-W', str(timeout), str(h2.IP()), '&')
+
+
+def tcp_iperf_traffic(hosts):
+    # Start iperf daemons in all hosts
+    for h1 in hosts:
+        h1.cmd('iperf -sD')
+
+    # Start iperf in all hosts to all
+    for h1 in hosts:
+        for h2 in hosts:
+            if h1!=h2:
+                h1.cmd('iperf -c', str(h2.IP()), '-t 3600', '&')
+
+
+def udp_iperf_traffic(hosts):
+    # Start iperf daemons in all hosts
+    for h1 in hosts:
+        h1.cmd('iperf -sD')
+
+    # Start iperf in all hosts to all
+    for h1 in hosts:
+        for h2 in hosts:
+            if h1!=h2:
+                h1.cmd('iperf -c', str(h2.IP()), '-t 3600 -u', '&')
+
+
+def check_connectivity(result):
+    for m in result:
+        src = m[0] 
+        dst = m[1]
+
+        # attempt/success, rtt min/avg/max/mdev %0.3f/%0.3f/%0.3f/%0.3f ms\n
+        # ex (1, 1, 3.981, 3.981, 3.981, 0.0)
+        measure_tuple = m[2] 
+        nattempt = int(measure_tuple[0])
+        nsuccess = int(measure_tuple[1])
+
+        # if num. of attempt is not same as num, of success,
+        if nattempt != nsuccess:
+            return False
+
+    return True
+
+
+def first_ping(hosts):
+    for h1 in hosts:
+        if str(h1.IP())=='10.0.0.1' is True:
+            h1.cmd('ping -c 1 10.0.0.2')
+        else:
+            h1.cmd('ping -c 1 10.0.0.1')
+
 
 def MakeTestBed_and_Test(topo_type, top, middle, bottom, host_fanout, timeout, ping_interval):
-  print "a. Firing up Mininet"
-  net = Mininet(topo=EventTopo(topo_type, top, middle, bottom, host_fanout), controller=lambda name: RemoteController( 'c0', '127.0.0.1' ), host=CPULimitedHost, link=TCLink)                                  
-  net.start() 
 
-  h1 = net.get('h1')
-  time.sleep(5)
+    network_stopped = False
 
-  # Start pings
-#  print "b. Starting allpair ping"
-  hosts = net.hosts
-#
-#  for h1 in hosts:
-#    for h2 in hosts:
-#      if h1!=h2:
-#        startpings(h1,h2, timeout, ping_interval)
-   
-  # Switch instructions (print flow table)
-  switches = net.switches
-  if len(switches) > 0:
-    print 'check 1'
-    switch_stat_printout(switches[0])
-    print 'check 2'
-#    switches[0].cmd("date >> ./output/stats")
-#    switches[0].cmd("echo '==========' >> ./output/stats")
-#    switches[0].cmd("ovs-dpctl show | grep -E -i -w 'system|flows|lookups' >> ./output/stats")
-  else:
-    print 'No switches returned'
+    ### Start mininet.
+    print "a. Firing up Mininet"
+    net = Mininet(topo=EventTopo(topo_type, top, middle, bottom, host_fanout),   \
+                  controller=lambda name: RemoteController( 'c0', '127.0.0.1' ), \
+                  host=CPULimitedHost, link=TCLink)     
+    net.start() 
+    time.sleep(1)
 
-  # Wait
-  time.sleep(timeout)
+    ### Make host notify where it is
+    print "b. Send first pings"
+    first_ping(net.hosts)
 
-#  # Stop pings
-  for host in hosts:
-    host.cmd( 'kill %while' )
+    ### Test connectivity
+    print "c. Test connectivity"
+    result = net.pingAllFull()
+    if check_connectivity(result) is False:
+        print '\n####################################\nFailed connectivity test! Abort\n####################################\n'
+        stop_mininet(net,c)
+        network_stopped = True
+  
 
-  for s in switches:
-    s.cmd( 'kill %while' )
+    ### Start traffic
+    print "d. Start background traffic"
+    ping_traffic(net.hosts, timeout, ping_interval)
+#    tcp_iperf_traffic(net.hosts)
+#    udp_iperf_traffic(net.hosts)
+ 
+    time.sleep(5)
 
-  print "c. Stopping Mininet"
-  net.stop()
+    ### Link/switch up and downs start
+    print "e. Start killing link/switches"
+    c = CLI(net,script='test_cmds')
+    #  c = CLI(net)
+    #  CLI.do_help(c,'')
+ 
 
+    ### Test connectivity
+    print "f. Test connectivity again"
+    result = net.pingAllFull()
+    if check_connectivity(result) is False:
+        print '\n####################################\nFailed connectivity test! Abort\n####################################\n'
+        stop_mininet(net,c)
+        network_stopped = True
+  
+
+    ### End test. Exit mininet.
+    if network_stopped is False:
+        print "g. Stopping Mininet"
+        stop_mininet(net,c)
+
+
+def kill_traffic(cli): 
+    # Kill ping traffic
+    CLI.do_sh(cli,'pkill ping')
+
+    # Kill TCP/UDP (iperf) traffic
+    CLI.do_sh(cli, 'kill -9 `pgrep iperf`')
+        
+
+def stop_mininet(net,cli):
+    kill_traffic(cli)
+    net.stop()
 
 def main():
   desc = ( 'Generate Mininet Testbed' )
@@ -209,7 +270,7 @@ def main():
 
   # Set parameters      
   timeout_int = math.ceil(float(options.timeout))
-  top = 1
+  top = 5
   middle = 2
   bottom = 3
   host_fanout = 2
